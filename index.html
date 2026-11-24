@@ -308,6 +308,7 @@ function rateCard(rating) {
 
   const character = currentCard.character;
   const s = cardState(character);
+  const isNew = !s.seen;
   const now = Date.now();
 
   if (rating === "again") {
@@ -316,14 +317,7 @@ function rateCard(rating) {
 
     // Repeat this card later in the current session.
     sessionQueue.push(currentCard);
-if (!s.seen) {
-  if (state.dailyNewDate !== todayKey()) {
-    state.dailyNewDate = todayKey();
-    state.dailyNewCount = 0;
-  }
 
-  state.dailyNewCount = (state.dailyNewCount || 0) + 1;
-}
   } else if (rating === "hard") {
     s.interval = s.seen
       ? Math.max(1, Math.ceil(s.interval * 1.2))
@@ -343,6 +337,15 @@ if (!s.seen) {
     s.seen = true;
   }
 
+  
+if (rating !== "again" && isNew) {
+    if (state.dailyNewDate !== todayKey()) {
+      state.dailyNewDate = todayKey();
+      state.dailyNewCount = 0;
+    }
+
+    state.dailyNewCount = (state.dailyNewCount || 0) + 1;
+  }
   state.cards[character] = s;
   state.history.push({
     id: character,
