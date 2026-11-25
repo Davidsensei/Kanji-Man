@@ -167,7 +167,7 @@ function getDailyNewCount() {
   return daily[deck].count || 0;
 }
 
-  function getReviewedTodayCount() {
+function getReviewedTodayCount() {
   const deck = state.activeDeck;
   const daily = state.reviewedTodayByDeck || {};
   const entry = daily[deck];
@@ -188,14 +188,15 @@ function loadState() {
       ...saved,
       cards: saved.cards || {},
       history: saved.history || [],
-      dailyNewCountByDeck: saved.dailyNewCountByDeck || {}
+      dailyNewCountByDeck: saved.dailyNewCountByDeck || {},
       reviewedTodayByDeck: saved.reviewedTodayByDeck || {}
     };
 
   } catch (e) {
     return {
       ...defaultState,
-      dailyNewCountByDeck: {}
+      dailyNewCountByDeck: {},
+      reviewedTodayByDeck: {}
     };
   }
 }
