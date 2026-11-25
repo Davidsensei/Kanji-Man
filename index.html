@@ -167,6 +167,18 @@ function getDailyNewCount() {
   return daily[deck].count || 0;
 }
 
+  function getReviewedTodayCount() {
+  const deck = state.activeDeck;
+  const daily = state.reviewedTodayByDeck || {};
+  const entry = daily[deck];
+
+  if (!entry || entry.date !== todayKey()) {
+    return 0;
+  }
+
+  return entry.count || 0;
+}
+
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
@@ -177,6 +189,7 @@ function loadState() {
       cards: saved.cards || {},
       history: saved.history || [],
       dailyNewCountByDeck: saved.dailyNewCountByDeck || {}
+      reviewedTodayByDeck: saved.reviewedTodayByDeck || {}
     };
 
   } catch (e) {
@@ -390,7 +403,23 @@ if (rating !== "again" && isNew) {
 });
 
   saveState();
-  sessionCount++;
+  if (!state.reviewedTodayByDeck) {
+  state.reviewedTodayByDeck = {};
+}
+
+const deck = state.activeDeck;
+
+if (
+  !state.reviewedTodayByDeck[deck] ||
+  state.reviewedTodayByDeck[deck].date !== todayKey()
+) {
+  state.reviewedTodayByDeck[deck] = {
+    date: todayKey(),
+    count: 0
+  };
+}
+
+state.reviewedTodayByDeck[deck].count++;
   startCard();
 }
 
@@ -446,7 +475,7 @@ function showStudy() {
         <span>New kanji</span>
       </div>
       <div class="stat">
-        <strong>${sessionCount}</strong>
+        <strong>${getReviewedTodayCount()}</strong>
         <span>Reviewed today</span>
       </div>
     </div>
@@ -514,7 +543,6 @@ function showStudy() {
     sessionQueue = [];
     currentCard = null;
     revealed = false;
-    sessionCount = 0;
 
     loadDatabase();
   });
