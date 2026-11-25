@@ -129,6 +129,7 @@ const STORAGE_KEY = "kanjiMan_v1";
 
 const defaultState = {
   dailyNew: 20,
+  dailyNewCountByDeck: {},
   cards: {},
   history: [],
   activeDeck: "N3",
@@ -156,22 +157,33 @@ function todayKey() {
 }
 
 function getDailyNewCount() {
-  return state.dailyNewDate === todayKey()
-    ? (state.dailyNewCount || 0)
-    : 0;
+  const deck = state.activeDeck;
+  const daily = state.dailyNewCountByDeck || {};
+
+  if (!daily[deck] || daily[deck].date !== todayKey()) {
+    return 0;
+  }
+
+  return daily[deck].count || 0;
 }
 
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+
     return {
       ...defaultState,
       ...saved,
       cards: saved.cards || {},
-      history: saved.history || []
+      history: saved.history || [],
+      dailyNewCountByDeck: saved.dailyNewCountByDeck || {}
     };
+
   } catch (e) {
-    return { ...defaultState };
+    return {
+      ...defaultState,
+      dailyNewCountByDeck: {}
+    };
   }
 }
 
@@ -202,7 +214,19 @@ function formatFurigana(sentence) {
 }
 
 function cardState(character) {
-  return state.cards[character] || {
+  const key = `${state.activeDeck}_${character}`;
+
+  // Keep existing N3 progress when upgrading to deck-specific keys
+  if (
+    state.activeDeck === "N3" &&
+    state.cards[character] &&
+    !state.cards[key]
+  ) {
+    state.cards[key] = state.cards[character];
+    delete state.cards[character];
+  }
+
+  return state.cards[key] || {
     reps: 0,
     interval: 0,
     due: 0,
@@ -220,23 +244,23 @@ async function loadDatabase() {
   const app = document.getElementById("app");
   app.innerHTML = `
     <div class="empty">
-      <h2>Loading your N3 database...</h2>
+      <h2>Loading your ${state.activeDeck} database...</h2>
       <p>Please wait a moment.</p>
     </div>
   `;
 
   try {
     const [kanjiResponse, vocabResponse] = await Promise.all([
-      fetch("./data/kanji/n3.json"),
-      fetch("./data/vocab/n3.json")
+      fetch(`./data/kanji/${state.activeDeck.toLowerCase()}.json`),
+      fetch(`./data/vocab/${state.activeDeck.toLowerCase()}.json`)
     ]);
 
     if (!kanjiResponse.ok) {
-      throw new Error("Could not load the N3 kanji file.");
+      throw new Error(`Could not load the ${state.activeDeck} kanji file.`);
     }
 
     if (!vocabResponse.ok) {
-      throw new Error("Could not load the N3 vocabulary file.");
+      throw new Error(`Could not load the ${state.activeDeck} vocabulary file.`);
     }
 
     kanjiData = await kanjiResponse.json();
@@ -261,7 +285,7 @@ async function loadDatabase() {
         <p>${escapeHTML(dataError)}</p>
         <p class="note">
           Please check that the files are in
-          data/kanji/n3.json and data/vocab/n3.json.
+          data/kanji/${state.activeDeck.toLowerCase()}.json and data/vocab/${state.activeDeck.toLowerCase()}.json.
         </p>
         <button class="primary" onclick="loadDatabase()">Try again</button>
       </div>
@@ -339,19 +363,31 @@ function rateCard(rating) {
 
   
 if (rating !== "again" && isNew) {
-    if (state.dailyNewDate !== todayKey()) {
-      state.dailyNewDate = todayKey();
-      state.dailyNewCount = 0;
-    }
-
-    state.dailyNewCount = (state.dailyNewCount || 0) + 1;
+  if (!state.dailyNewCountByDeck) {
+    state.dailyNewCountByDeck = {};
   }
-  state.cards[character] = s;
+
+  const deck = state.activeDeck;
+
+  if (
+    !state.dailyNewCountByDeck[deck] ||
+    state.dailyNewCountByDeck[deck].date !== todayKey()
+  ) {
+    state.dailyNewCountByDeck[deck] = {
+      date: todayKey(),
+      count: 0
+    };
+  }
+
+  state.dailyNewCountByDeck[deck].count++;
+}
+  state.cards[`${state.activeDeck}_${character}`] = s;
   state.history.push({
-    id: character,
-    rating,
-    date: now
-  });
+  id: character,
+  deck: state.activeDeck,
+  rating,
+  date: now
+});
 
   saveState();
   sessionCount++;
@@ -557,10 +593,17 @@ function showProgress() {
   const total = kanjiData.length;
   const percent = total ? Math.round(learned / total * 100) : 0;
 
-  const reviews = state.history.length;
-  const good = state.history.filter(h => h.rating === "good").length;
-  const hard = state.history.filter(h => h.rating === "hard").length;
-  const again = state.history.filter(h => h.rating === "again").length;
+  // Show only the review history for the active deck.
+  // Older history without a deck label belongs to N3.
+  const deckHistory = state.history.filter(
+    h => h.deck === state.activeDeck ||
+    (!h.deck && state.activeDeck === "N3")
+  );
+
+  const reviews = deckHistory.length;
+  const good = deckHistory.filter(h => h.rating === "good").length;
+  const hard = deckHistory.filter(h => h.rating === "hard").length;
+  const again = deckHistory.filter(h => h.rating === "again").length;
 
   document.getElementById("app").innerHTML = `
     <h1>Your progress</h1>
@@ -577,11 +620,11 @@ function showProgress() {
       </div>
       <div class="stat">
         <strong>${percent}%</strong>
-        <span>N3 completed</span>
+        <span>${state.activeDeck} completed</span>
       </div>
     </div>
 
-    <p><strong>N3 deck progress</strong></p>
+    <p><strong>${state.activeDeck} deck progress</strong></p>
     <div class="progressbar">
       <div style="width:${percent}%"></div>
     </div>
@@ -616,7 +659,7 @@ function showSettings() {
     <div class="setting">
       <div>
         <strong>New kanji per day</strong>
-        <div class="note">Your daily learning target</div>
+        <div class="note">Daily target for each individual deck</div>
       </div>
       <input id="dailyNew" type="number" min="1" max="100"
         value="${state.dailyNew}">
@@ -635,47 +678,81 @@ function showSettings() {
     <div class="setting">
       <div>
         <strong>Active deck</strong>
-        <div class="note">Currently training with JLPT N3</div>
+        <div class="note">Choose your JLPT level</div>
       </div>
-      <strong style="color:var(--accent)">N3</strong>
+      <select id="activeDeck">
+        <option value="N5" ${state.activeDeck === "N5" ? "selected" : ""}>N5</option>
+        <option value="N4" ${state.activeDeck === "N4" ? "selected" : ""}>N4</option>
+        <option value="N3" ${state.activeDeck === "N3" ? "selected" : ""}>N3</option>
+        <option value="N2" ${state.activeDeck === "N2" ? "selected" : ""}>N2</option>
+        <option value="N1" ${state.activeDeck === "N1" ? "selected" : ""}>N1</option>
+      </select>
     </div>
-
-    <p class="note">
-      We'll add separate N5, N4, N3, N2 and N1 decks
-      as we expand the database.
-    </p>
 
     <button class="primary" id="saveSettings">Save settings</button>
 
     <button class="primary" id="reset"
       style="background:#383d50;color:white;margin-top:10px">
-      Reset study progress
+      Reset ${state.activeDeck} progress
     </button>
+
+    <p class="note">
+      Each deck has its own learning progress, review history and daily
+      new-kanji allowance. Your progress is saved on this device.
+    </p>
   `;
 
   document.getElementById("saveSettings").addEventListener("click", () => {
     const value = Number(document.getElementById("dailyNew").value);
     const furigana = document.getElementById("furiganaToggle").checked;
+    const selectedDeck = document.getElementById("activeDeck").value;
 
     if (value >= 1 && value <= 100) {
+      const deckChanged = selectedDeck !== state.activeDeck;
+
       state.dailyNew = value;
       state.showFurigana = furigana;
+      state.activeDeck = selectedDeck;
+
       saveState();
 
-      makeQueue();
-      currentCard = sessionQueue.shift() || null;
-
-      alert("Settings saved!");
-      render();
+      if (deckChanged) {
+        sessionCount = 0;
+        loadDatabase();
+      } else {
+        makeQueue();
+        currentCard = sessionQueue.shift() || null;
+        render();
+      }
     } else {
       alert("Please enter a number between 1 and 100.");
     }
   });
 
   document.getElementById("reset").addEventListener("click", () => {
-    if (confirm("Reset all your N3 study progress?")) {
-      state.cards = {};
-      state.history = [];
+    const deck = state.activeDeck;
+
+    if (confirm(`Reset all your ${deck} study progress? This cannot be undone.`)) {
+      // Remove this deck's saved card progress.
+      Object.keys(state.cards).forEach(key => {
+        if (
+          key.startsWith(`${deck}_`) ||
+          (deck === "N3" && !key.includes("_"))
+        ) {
+          delete state.cards[key];
+        }
+      });
+
+      // Remove this deck's review history.
+      state.history = state.history.filter(h =>
+        h.deck !== deck && !(deck === "N3" && !h.deck)
+      );
+
+      // Reset this deck's daily new-kanji counter.
+      if (state.dailyNewCountByDeck) {
+        delete state.dailyNewCountByDeck[deck];
+      }
+
       saveState();
 
       sessionQueue = [];
@@ -688,7 +765,6 @@ function showSettings() {
     }
   });
 }
-
 // Navigation
 document.querySelectorAll("nav button").forEach(button => {
   button.addEventListener("click", () => {
