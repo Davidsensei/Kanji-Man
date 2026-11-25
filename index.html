@@ -420,7 +420,21 @@ function showStudy() {
 
   app.innerHTML = `
     <h1>Today's training</h1>
-    <p class="subtitle">Your N3 training ground. One kanji at a time.</p>
+    <p class="subtitle">Your ${state.activeDeck} training ground. One kanji at a time.</p>
+
+    <div class="setting" style="margin:15px 0 20px">
+      <div>
+        <strong>Choose your JLPT level</strong>
+        <div class="note">Switch between your kanji decks</div>
+      </div>
+      <select id="studyDeck">
+        <option value="N5" ${state.activeDeck === "N5" ? "selected" : ""}>N5</option>
+        <option value="N4" ${state.activeDeck === "N4" ? "selected" : ""}>N4</option>
+        <option value="N3" ${state.activeDeck === "N3" ? "selected" : ""}>N3</option>
+        <option value="N2" ${state.activeDeck === "N2" ? "selected" : ""}>N2</option>
+        <option value="N1" ${state.activeDeck === "N1" ? "selected" : ""}>N1</option>
+      </select>
+    </div>
 
     <div class="stats">
       <div class="stat">
@@ -491,6 +505,19 @@ function showStudy() {
       </div>
     `}
   `;
+
+  // Switch decks directly from the Study page.
+  document.getElementById("studyDeck")?.addEventListener("change", event => {
+    state.activeDeck = event.target.value;
+    saveState();
+
+    sessionQueue = [];
+    currentCard = null;
+    revealed = false;
+    sessionCount = 0;
+
+    loadDatabase();
+  });
 
   document.getElementById("reveal")?.addEventListener("click", () => {
     revealed = true;
